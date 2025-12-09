@@ -177,21 +177,28 @@ function App() {
           for (let i = 0; i < pages.length; i++) {
               const originalPage = pages[i] as HTMLElement;
               
-              // Clone the page to render full size off-screen
+              // Create a container with fixed physical dimensions to match CSS
               const container = document.createElement('div');
-              container.style.position = 'absolute';
-              container.style.top = '-9999px';
-              container.style.left = '-9999px';
-              container.style.width = '210mm';
-              container.style.zIndex = '-1';
+              container.style.position = 'fixed'; 
+              container.style.top = '0';
+              container.style.left = '-10000px';
+              // Use mm to match CSS .a4-paper definition exactly
+              container.style.width = '210mm'; 
+              container.style.height = '297mm';
+              container.style.zIndex = '-9999';
               document.body.appendChild(container);
 
               const clone = originalPage.cloneNode(true) as HTMLElement;
-              // Ensure clone has no transform and correct font smoothing
+              // Reset transformations and margins to prevent offsets
               clone.style.transform = 'none';
               clone.style.margin = '0';
               clone.style.boxShadow = 'none';
+              // Force size
+              clone.style.width = '100%';
+              clone.style.height = '100%';
+              // Improve font rendering accuracy
               (clone.style as any).webkitFontSmoothing = 'antialiased';
+              (clone.style as any).mozOsxFontSmoothing = 'grayscale';
               
               container.appendChild(clone);
 
@@ -203,11 +210,15 @@ function App() {
               }));
 
               const canvas = await html2canvas(clone, { 
-                  scale: 3, // Reduced from 4 to 3 (300 DPI) to save memory and avoid crashes
+                  scale: 3, // 300 DPI quality
                   useCORS: true,
                   logging: false,
                   backgroundColor: '#ffffff',
-                  windowWidth: 794, 
+                  // Remove explicit px dimensions to let html2canvas calculate based on mm
+                  x: 0,
+                  y: 0,
+                  scrollX: 0,
+                  scrollY: 0
               });
 
               // Push blob to array - Use JPEG quality 0.8 for massive compression
@@ -249,16 +260,22 @@ function App() {
            for (let i = 0; i < pages.length; i++) {
               const originalPage = pages[i] as HTMLElement;
               const container = document.createElement('div');
-              container.style.position = 'absolute';
-              container.style.top = '-9999px';
-              container.style.left = '-9999px';
+              container.style.position = 'fixed';
+              container.style.top = '0';
+              container.style.left = '-10000px';
+              // Use mm to match CSS
               container.style.width = '210mm';
+              container.style.height = '297mm';
+              container.style.zIndex = '-9999';
               document.body.appendChild(container);
 
               const clone = originalPage.cloneNode(true) as HTMLElement;
               clone.style.transform = 'none';
               clone.style.margin = '0';
               clone.style.boxShadow = 'none';
+              clone.style.width = '100%';
+              clone.style.height = '100%';
+              (clone.style as any).webkitFontSmoothing = 'antialiased';
               container.appendChild(clone);
 
               const images = Array.from(clone.getElementsByTagName('img'));
@@ -272,7 +289,10 @@ function App() {
                   useCORS: true, 
                   logging: false, 
                   backgroundColor: '#ffffff',
-                  windowWidth: 794 
+                  x: 0,
+                  y: 0,
+                  scrollX: 0,
+                  scrollY: 0
               });
               canvases.push(canvas);
               document.body.removeChild(container);

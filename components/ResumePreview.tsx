@@ -83,16 +83,14 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({ data, scale }) => {
           fontSize: `${baseSize}pt`,
           color: "#000000",
           textAlign: (profile.showAvatar && profile.avatar) ? 'left' as const : ((style.templateId === 'modern' || style.templateId === 'minimal') ? 'left' as const : 'center' as const),
-          paddingBottom: style.templateId === 'minimal' ? '12pt' : '0',
-          borderBottom: style.templateId === 'minimal' ? '1pt solid #000' : 'none',
+          // Removed borderBottom to use physical div instead
           marginBottom: `${baseSize * 1.5}pt`
       },
       sectionTitle: {
           fontSize: `${baseSize + 3.5}pt`, 
           fontWeight: "bold",
           color: style.templateId === 'minimal' ? '#000' : style.themeColor,
-          borderBottom: style.templateId === 'minimal' ? 'none' : `1pt solid ${style.templateId === 'modern' ? style.themeColor : '#E0E0E0'}`,
-          paddingBottom: "2pt",
+          // Removed borderBottom to use physical div instead
           marginTop: `${baseSize * 1.4}pt`,
           marginBottom: `${baseSize * 0.6}pt`,
           textTransform: style.templateId === 'minimal' ? 'uppercase' as const : 'none' as const
@@ -232,14 +230,16 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({ data, scale }) => {
                             justifyContent: 'space-between', 
                             alignItems: 'flex-start',
                             marginBottom: dynamicStyles.headerMeta.marginBottom,
-                            paddingBottom: dynamicStyles.headerMeta.paddingBottom,
-                            borderBottom: dynamicStyles.headerMeta.borderBottom
                         }}>
                             <div style={{ flex: 1 }}>
                                 <h1 style={{ ...dynamicStyles.h1, textAlign: 'left', marginBottom: '8pt' }}>{profile.name || "您的姓名"}</h1>
                                 <div style={{ fontSize: dynamicStyles.headerMeta.fontSize, color: "#000", textAlign: 'left' }}>
                                     {metaLines.map((line, idx) => <div key={idx} style={{ marginBottom: '2pt' }}>{line}</div>)}
                                 </div>
+                                {/* Physical Separator for Minimal Template in Header */}
+                                {style.templateId === 'minimal' && (
+                                    <div style={{ height: '1px', backgroundColor: '#000', marginTop: '12pt', width: '100%' }} />
+                                )}
                             </div>
                             <div style={{ width: '100pt', marginLeft: '20pt', flexShrink: 0 }}>
                                 <img src={profile.avatar} style={{ width: '100%', height: 'auto', maxHeight: '130pt', objectFit: 'cover', borderRadius: '4pt' }} alt="Profile" />
@@ -251,6 +251,10 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({ data, scale }) => {
                             <div style={dynamicStyles.headerMeta}>
                                 {metaLines.map((line, idx) => <div key={idx} style={{ marginBottom: '2pt' }}>{line}</div>)}
                             </div>
+                             {/* Physical Separator for Minimal Template in Header */}
+                             {style.templateId === 'minimal' && (
+                                <div style={{ height: '1px', backgroundColor: '#000', marginTop: '12pt', width: '100%' }} />
+                            )}
                         </header>
                     )}
                 </div>
@@ -264,10 +268,22 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({ data, scale }) => {
             id: 'summary-title',
             content: (
                  <div style={style.templateId === 'curve' ? { padding: `0 ${paddingVal}` } : {}}>
-                    {style.templateId === 'curve' ? 
+                    {style.templateId === 'curve' ? (
                        <h3 style={dynamicStyles.curveSectionTitle}>个人简介</h3> 
-                       : <h3 style={dynamicStyles.sectionTitle}>个人简介</h3>
-                    }
+                    ) : (
+                       <div>
+                           <h3 style={dynamicStyles.sectionTitle}>个人简介</h3>
+                           {/* Physical Separator for Sections */}
+                           {style.templateId !== 'minimal' && (
+                                <div style={{ 
+                                    height: '1px', 
+                                    backgroundColor: style.templateId === 'modern' ? style.themeColor : '#E0E0E0', 
+                                    marginTop: '0',
+                                    marginBottom: `${baseSize * 0.6}pt`
+                                }} />
+                           )}
+                       </div>
+                    )}
                  </div>
             )
         });
@@ -323,10 +339,22 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({ data, scale }) => {
                 id: `sec-title-${config.id}`,
                 content: (
                      <div style={style.templateId === 'curve' ? { padding: `0 ${paddingVal}` } : {}}>
-                        {style.templateId === 'curve' ? 
+                        {style.templateId === 'curve' ? (
                            <h3 style={dynamicStyles.curveSectionTitle}>{name}</h3> 
-                           : <h3 style={dynamicStyles.sectionTitle}>{name}</h3>
-                        }
+                        ) : (
+                           <div>
+                               <h3 style={dynamicStyles.sectionTitle}>{name}</h3>
+                               {/* Physical Separator for Sections */}
+                               {style.templateId !== 'minimal' && (
+                                    <div style={{ 
+                                        height: '1px', 
+                                        backgroundColor: style.templateId === 'modern' ? style.themeColor : '#E0E0E0', 
+                                        marginTop: '0',
+                                        marginBottom: `${baseSize * 0.6}pt`
+                                    }} />
+                               )}
+                           </div>
+                        )}
                      </div>
                 )
             });
@@ -366,22 +394,11 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({ data, scale }) => {
       const elements = Array.from(container.children) as HTMLElement[];
       const pageHeight = 1120; // Slightly less than 1123 for safety
       
-      // Calculate effective height for content per page
-      // For standard: content must fit in 1120 - padding * 2
-      // For curve: container padding is 0, but content has built-in padding. 
-      // The measuring blocks capture height + margins.
-      // So we just check against full pageHeight for 'curve', or pageHeight - padding*2 for standard?
-      // Actually, since we render 'standard' pages with padding on the wrapper, the content flows inside.
-      // The measured blocks don't include that wrapper padding.
-      
       let limit = pageHeight;
       if (style.templateId !== 'curve') {
           const p = (style.pagePadding || 20) * 3.78;
           limit = pageHeight - (p * 2);
       } else {
-          // For curve, the wrapper is 0 padding. 
-          // Header block is full width.
-          // Body blocks have internal padding but that affects width, not height constraints (mostly).
           limit = pageHeight;
       }
 
@@ -395,8 +412,6 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({ data, scale }) => {
           const mb = parseFloat(style.marginBottom);
           const total = h + mt + mb;
 
-          // If a single block is huge (larger than page), it will just overflow (basic handling)
-          // Otherwise, check if it fits
           if (currentH + total > limit && currentH > 0) {
               breaks.push(index);
               currentH = 0;
@@ -404,7 +419,6 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({ data, scale }) => {
           currentH += total;
       });
 
-      // Avoid infinite loops or unnecessary updates
       const newBreaksJson = JSON.stringify(breaks);
       setPageBreaks(prev => {
           if (JSON.stringify(prev) !== newBreaksJson) return breaks;
@@ -415,7 +429,6 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({ data, scale }) => {
 
   // --- 3. Render Pages ---
   const renderPages = () => {
-      // Determine ranges
       const pages = [];
       for (let i = 0; i < pageBreaks.length; i++) {
           const start = pageBreaks[i];
