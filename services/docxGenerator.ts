@@ -12,6 +12,22 @@ const getFontName = (font: string) => {
     }
 };
 
+// Helper to get image dimensions
+const getImageDimensions = (base64: string): Promise<{ width: number; height: number; ratio: number }> => {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+            resolve({
+                width: img.width,
+                height: img.height,
+                ratio: img.width / img.height
+            });
+        };
+        img.onerror = reject;
+        img.src = base64;
+    });
+};
+
 // Common constants wrapper
 const getStyleConstants = (style: ResumeStyle) => {
     const baseSizePt = style.fontSize || 10.5;
@@ -169,11 +185,10 @@ export const generateDocx = async (data: ResumeData) => {
   // --- Assembly ---
   const blocks: any[] = [];
   
-  // -- Header Generation (Complex due to Avatar and Multiline Meta) --
+  // -- Header Generation --
   const p = data.profile;
   const joinMeta = (parts: (string | undefined)[]) => parts.filter(Boolean).join(" | ");
   
-  // Construct Meta Lines
   const metaLinesText: string[] = [];
   const line1 = joinMeta([p.title, p.salary, p.jobStatus]);
   if (line1) metaLinesText.push(line1);
@@ -185,7 +200,6 @@ export const generateDocx = async (data: ResumeData) => {
   const line4 = joinMeta([p.height ? `${p.height}cm` : undefined, p.weight ? `${p.weight}kg` : undefined]);
   if (line4) metaLinesText.push(line4);
 
-  // Helper for meta paragraphs
   const createMetaP = (text: string, align: any) => new Paragraph({
        children: [new TextRun({ text, font: C.MAIN_FONT, size: C.sizeMeta, color: "000000" })],
        alignment: align,
@@ -196,11 +210,38 @@ export const generateDocx = async (data: ResumeData) => {
   const headerAlign = (hasAvatar || style.templateId === 'modern' || style.templateId === 'minimal') ? AlignmentType.LEFT : AlignmentType.CENTER;
 
   if (hasAvatar) {
-      // 2-Column Table for Header: [ Text ] [ Image ]
-      // Need to convert Base64 to Buffer
       let imgData = p.avatar!;
       if (imgData.includes(',')) imgData = imgData.split(',')[1];
       const imgBuffer = Uint8Array.from(atob(imgData), c => c.charCodeAt(0));
+      
+      // Calculate scaling to avoid distortion
+      // Standard Box: Width 100, Height 130
+      let finalW = 100;
+      let finalH = 130;
+      
+      try {
+        const dims = await getImageDimensions(p.avatar!);
+        const maxW = 100;
+        const maxH = 130;
+        
+        // Scale to fit within box while maintaining aspect ratio
+        if (dims.width > dims.height) {
+            // Landscape
+            finalW = maxW;
+            finalH = (dims.height / dims.width) * maxW;
+        } else {
+            // Portrait or Square
+            finalH = maxH;
+            finalW = (dims.width / dims.height) * maxH;
+            if (finalW > maxW) {
+                finalW = maxW;
+                finalH = (dims.height / dims.width) * maxW;
+            }
+        }
+      } catch (e) {
+          console.warn("Could not calculate image dimensions, using default.", e);
+      }
+
 
       const headerTextCell = new TableCell({
           width: { size: 80, type: WidthType.PERCENTAGE },
@@ -225,8 +266,8 @@ export const generateDocx = async (data: ResumeData) => {
                   children: [
                       new ImageRun({
                           data: imgBuffer,
-                          transformation: { width: 100, height: 130 }, // Fixed size approx
-                          type: "png" // docx detects type usually, but 'png' is safe fallback
+                          transformation: { width: finalW, height: finalH },
+                          type: "png"
                       })
                   ],
                   alignment: AlignmentType.RIGHT
@@ -242,15 +283,13 @@ export const generateDocx = async (data: ResumeData) => {
 
       blocks.push(headerTable);
 
-      // Border for minimal style header (outside table)
       if (style.templateId === 'minimal') {
            blocks.push(new Paragraph({ border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: "000000", space: 12 } } }));
       } else {
-           blocks.push(new Paragraph({ spacing: { after: Math.floor(style.fontSize * 1.5 * 20) } })); // Spacer
+           blocks.push(new Paragraph({ spacing: { after: Math.floor(style.fontSize * 1.5 * 20) } })); 
       }
 
   } else {
-      // Standard Text Header
       blocks.push(new Paragraph({
         children: [new TextRun({ text: p.name, font: C.MAIN_FONT, bold: true, size: C.sizeH1, color: style.templateId === 'minimal' ? C.TEXT_COLOR : C.THEME_COLOR })],
         heading: HeadingLevel.HEADING_1,
@@ -258,34 +297,21 @@ export const generateDocx = async (data: ResumeData) => {
         spacing: { after: Math.floor(style.fontSize * 0.4 * 20), line: C.LINE_SPACING_VAL, lineRule: "auto" },
       }));
 
-      // Flatten meta for standard view or keep lines? 
-      // If we use lines, it's safer.
-      const metaChildren: any[] = [];
-      metaLinesText.forEach((line, idx) => {
-          metaChildren.push(new TextRun({ text: line, font: C.MAIN_FONT, size: C.sizeMeta, color: "000000" }));
-          if (idx < metaLinesText.length - 1) metaChildren.push(new TextRun({ text: "\n", font: C.MAIN_FONT })); // Line break? Paragraph break is better.
-      });
-
-      // Actually, creating multiple paragraphs for meta lines is safer for formatting
       metaLinesText.forEach(line => {
           blocks.push(createMetaP(line, headerAlign));
       });
 
-      // Add bottom border/spacing
       blocks.push(new Paragraph({
         border: style.templateId === 'minimal' ? { bottom: { style: BorderStyle.SINGLE, size: 6, color: "000000", space: 12 } } : undefined,
         spacing: { after: Math.floor(style.fontSize * 1.5 * 20) }
       }));
   }
 
-
-  // Summary
   if (data.profile.summary) {
       blocks.push(createSectionTitle("个人简介"));
       blocks.push(createBodyParagraph(data.profile.summary));
   }
 
-  // Dynamic Sections
   data.sectionOrder.forEach(config => {
       if (!config.visible) return;
       
@@ -348,22 +374,23 @@ export const generateDocx = async (data: ResumeData) => {
 
 
 /**
- * Strategy 2: Image-based Docx (Perfect Visual Fidelity)
- * Takes a snapshot of the resume as an image and embeds it into the DOCX.
+ * Strategy 2: Image-based Multi-page Docx
+ * Accepts an array of image Blobs (one per page).
  */
-export const generateImageBasedDocx = async (imageBlob: Blob, fileName: string) => {
+export const generateImageBasedDocx = async (imageBlobs: Blob[], fileName: string) => {
     const { docx, saveAs } = window;
     if (!docx) { alert("组件加载中..."); return; }
 
     const { Document, Packer, Paragraph, ImageRun } = docx;
 
-    // Convert Blob to ArrayBuffer then Uint8Array
-    const buffer = await imageBlob.arrayBuffer();
-    const image = new Uint8Array(buffer);
+    const sections = [];
 
-    // Create a document with 0 margins containing the full page image
-    const doc = new Document({
-        sections: [{
+    for (const imageBlob of imageBlobs) {
+        // Convert Blob to ArrayBuffer then Uint8Array
+        const buffer = await imageBlob.arrayBuffer();
+        const image = new Uint8Array(buffer);
+
+        sections.push({
             properties: {
                 page: {
                     margin: { top: 0, bottom: 0, left: 0, right: 0 }
@@ -378,12 +405,16 @@ export const generateImageBasedDocx = async (imageBlob: Blob, fileName: string) 
                                 width: 794, // Standard A4 width in pixels at 96 DPI
                                 height: 1123 
                             },
-                            type: "png"
+                            type: "jpg" // Use JPG to match the compressed input
                         })
                     ]
                 })
             ]
-        }]
+        });
+    }
+
+    const doc = new Document({
+        sections: sections
     });
 
     const docBlob = await Packer.toBlob(doc);

@@ -140,10 +140,6 @@ function App() {
     const handleResize = () => {
         const width = window.innerWidth;
         if (width < 768) {
-            // Mobile: Fit width minus padding (approx)
-            // A4 width is ~210mm. Screen width pixels need to map to that.
-            // Let's assume standard A4 pixel width is around 794px at 96 DPI.
-            // We want the paper to fit in (window.innerWidth - 32px).
             const containerWidth = width - 40; 
             const paperOriginalWidth = 794; 
             const newScale = Math.max(0.4, containerWidth / paperOriginalWidth);
@@ -172,54 +168,65 @@ function App() {
           return;
       }
       
-      const originalElement = document.getElementById('resume-preview-content');
-      if (!originalElement) return;
+      const pages = document.querySelectorAll('.preview-page');
+      if (pages.length === 0) return;
 
-      // Clone logic to render full size off-screen
-      const container = document.createElement('div');
-      container.style.position = 'absolute';
-      container.style.top = '-9999px';
-      container.style.left = '-9999px';
-      container.style.width = '210mm';
-      container.style.zIndex = '-1';
-      document.body.appendChild(container);
-
-      const clone = originalElement.cloneNode(true) as HTMLElement;
-      clone.style.transform = 'none';
-      clone.style.margin = '0';
-      clone.style.boxShadow = 'none';
-      container.appendChild(clone);
+      const blobs: Blob[] = [];
 
       try {
-          // Wait for images
-          const images = Array.from(clone.getElementsByTagName('img'));
-          await Promise.all(images.map(img => {
-              if (img.complete) return Promise.resolve();
-              return new Promise(resolve => { img.onload = resolve; img.onerror = resolve; });
-          }));
+          for (let i = 0; i < pages.length; i++) {
+              const originalPage = pages[i] as HTMLElement;
+              
+              // Clone the page to render full size off-screen
+              const container = document.createElement('div');
+              container.style.position = 'absolute';
+              container.style.top = '-9999px';
+              container.style.left = '-9999px';
+              container.style.width = '210mm';
+              container.style.zIndex = '-1';
+              document.body.appendChild(container);
 
-          const canvas = await html2canvas(clone, { 
-              scale: 2, // High res for print
-              useCORS: true,
-              logging: false,
-              backgroundColor: '#ffffff',
-              windowWidth: 794,
-          });
+              const clone = originalPage.cloneNode(true) as HTMLElement;
+              // Ensure clone has no transform and correct font smoothing
+              clone.style.transform = 'none';
+              clone.style.margin = '0';
+              clone.style.boxShadow = 'none';
+              (clone.style as any).webkitFontSmoothing = 'antialiased';
+              
+              container.appendChild(clone);
 
-          // Convert canvas to blob
-          canvas.toBlob((blob: Blob | null) => {
-              if (blob) {
-                  generateImageBasedDocx(blob, resumeData.profile.name || 'resume');
-              } else {
-                  alert("导出生成失败");
-              }
-          }, 'image/png');
+              // Wait for images in this page
+              const images = Array.from(clone.getElementsByTagName('img'));
+              await Promise.all(images.map(img => {
+                  if (img.complete) return Promise.resolve();
+                  return new Promise(resolve => { img.onload = resolve; img.onerror = resolve; });
+              }));
+
+              const canvas = await html2canvas(clone, { 
+                  scale: 3, // Reduced from 4 to 3 (300 DPI) to save memory and avoid crashes
+                  useCORS: true,
+                  logging: false,
+                  backgroundColor: '#ffffff',
+                  windowWidth: 794, 
+              });
+
+              // Push blob to array - Use JPEG quality 0.8 for massive compression
+              const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.8));
+              if (blob) blobs.push(blob);
+              
+              document.body.removeChild(container);
+          }
+
+          if (blobs.length > 0) {
+              generateImageBasedDocx(blobs, resumeData.profile.name || 'resume');
+          } else {
+              alert("导出生成失败");
+          }
 
       } catch (error) {
           console.error("Export failed", error);
           alert("导出失败，请重试");
       } finally {
-          document.body.removeChild(container);
           setShowDownloadMenu(false);
       }
   };
@@ -230,62 +237,87 @@ function App() {
           alert("导出组件加载中，请稍后再试。");
           return;
       }
-      const originalElement = document.getElementById('resume-preview-content');
-      if (!originalElement) return;
+      
+      // Capture all pages
+      const pages = document.querySelectorAll('.preview-page');
+      if (pages.length === 0) return;
 
-      const container = document.createElement('div');
-      container.style.position = 'absolute';
-      container.style.top = '-9999px';
-      container.style.left = '-9999px';
-      container.style.width = '210mm';
-      container.style.zIndex = '-1';
-      document.body.appendChild(container);
-
-      const clone = originalElement.cloneNode(true) as HTMLElement;
-      clone.style.transform = 'none';
-      clone.style.margin = '0';
-      clone.style.boxShadow = 'none';
-      container.appendChild(clone);
+      // Container for all canvases
+      const canvases = [];
 
       try {
-          // Wait for images to load in clone if any (avatar)
-          const images = Array.from(clone.getElementsByTagName('img'));
-          await Promise.all(images.map(img => {
-              if (img.complete) return Promise.resolve();
-              return new Promise(resolve => { img.onload = resolve; img.onerror = resolve; });
-          }));
+           for (let i = 0; i < pages.length; i++) {
+              const originalPage = pages[i] as HTMLElement;
+              const container = document.createElement('div');
+              container.style.position = 'absolute';
+              container.style.top = '-9999px';
+              container.style.left = '-9999px';
+              container.style.width = '210mm';
+              document.body.appendChild(container);
 
-          const canvas = await html2canvas(clone, { 
-              scale: 2,
-              useCORS: true,
-              logging: false,
-              backgroundColor: '#ffffff',
-              windowWidth: 794,
-          });
+              const clone = originalPage.cloneNode(true) as HTMLElement;
+              clone.style.transform = 'none';
+              clone.style.margin = '0';
+              clone.style.boxShadow = 'none';
+              container.appendChild(clone);
+
+              const images = Array.from(clone.getElementsByTagName('img'));
+              await Promise.all(images.map(img => {
+                  if (img.complete) return Promise.resolve();
+                  return new Promise(resolve => { img.onload = resolve; img.onerror = resolve; });
+              }));
+
+              const canvas = await html2canvas(clone, { 
+                  scale: 3, 
+                  useCORS: true, 
+                  logging: false, 
+                  backgroundColor: '#ffffff',
+                  windowWidth: 794 
+              });
+              canvases.push(canvas);
+              document.body.removeChild(container);
+           }
 
           if (type === 'image') {
-            const link = document.createElement('a');
-            link.download = `${resumeData.profile.name || 'resume'}_preview.png`;
-            link.href = canvas.toDataURL('image/png');
-            link.click();
+            const totalHeight = canvases.reduce((sum, c) => sum + c.height, 0);
+            const maxWidth = Math.max(...canvases.map(c => c.width));
+            
+            const mergedCanvas = document.createElement('canvas');
+            mergedCanvas.width = maxWidth;
+            mergedCanvas.height = totalHeight;
+            const ctx = mergedCanvas.getContext('2d');
+            if (ctx) {
+                let currentY = 0;
+                canvases.forEach(c => {
+                    ctx.drawImage(c, 0, currentY);
+                    currentY += c.height;
+                });
+                const link = document.createElement('a');
+                link.download = `${resumeData.profile.name || 'resume'}_preview.jpg`;
+                link.href = mergedCanvas.toDataURL('image/jpeg', 0.9);
+                link.click();
+            }
+
           } else {
-            const imgData = canvas.toDataURL('image/jpeg', 1.0);
             const { jsPDF } = jspdf;
             const pdf = new jsPDF('p', 'mm', 'a4');
             const pdfWidth = 210; 
             const pdfHeight = 297;
-            const imgProps = pdf.getImageProperties(imgData);
-            const pdfImgHeight = (imgProps.height * pdfWidth) / imgProps.width;
+
+            canvases.forEach((canvas, index) => {
+                if (index > 0) pdf.addPage();
+                const imgData = canvas.toDataURL('image/jpeg', 0.9);
+                const imgProps = pdf.getImageProperties(imgData);
+                const pdfImgHeight = (imgProps.height * pdfWidth) / imgProps.width;
+                pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfImgHeight);
+            });
             
-            pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfImgHeight);
             pdf.save(`${resumeData.profile.name || 'resume'}.pdf`);
           }
 
       } catch (error) {
           console.error("Export failed", error);
           alert("导出失败，请重试");
-      } finally {
-          document.body.removeChild(container);
       }
   };
 
@@ -368,7 +400,8 @@ function App() {
                   {[
                       { id: 'classic', name: '经典商务 (Classic)', desc: '稳重、居中对齐，适合传统行业', color: 'border-l-4 border-blue-600' },
                       { id: 'modern', name: '现代先锋 (Modern)', desc: '左对齐标题，带有醒目分割线', color: 'border-l-4 border-emerald-500' },
-                      { id: 'minimal', name: '极简主义 (Minimal)', desc: '无边框，纯净排版，注重内容', color: 'border-l-4 border-slate-800' }
+                      { id: 'minimal', name: '极简主义 (Minimal)', desc: '无边框，纯净排版，注重内容', color: 'border-l-4 border-slate-800' },
+                      { id: 'curve', name: '全能简历 (Curve)', desc: '顶部曲线背景，胶囊标题，商务大气', color: 'border-l-4 border-indigo-600' }
                   ].map(t => (
                       <button
                           key={t.id}
@@ -657,9 +690,11 @@ function App() {
                  {resumeData.style.templateId === 'classic' && <span className="w-2 h-2 rounded-full bg-blue-500"></span>}
                  {resumeData.style.templateId === 'modern' && <span className="w-2 h-2 rounded-full bg-emerald-500"></span>}
                  {resumeData.style.templateId === 'minimal' && <span className="w-2 h-2 rounded-full bg-slate-800"></span>}
+                 {resumeData.style.templateId === 'curve' && <span className="w-2 h-2 rounded-full bg-indigo-500"></span>}
                  {resumeData.style.templateId === 'classic' && '经典'}
                  {resumeData.style.templateId === 'modern' && '现代'}
                  {resumeData.style.templateId === 'minimal' && '极简'}
+                 {resumeData.style.templateId === 'curve' && '全能'}
                  <span className="text-slate-300">|</span>
                  所见即所得
              </span>
