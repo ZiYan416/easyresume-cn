@@ -69,18 +69,21 @@ const createRichTextRuns = (text: string, baseRunStyle: any, MAIN_FONT: string, 
     return runs;
 };
 
+
 /**
  * Strategy 1: Standard Flow Export
- * Uses Mix of Paragraphs and Tables. Good for ATS.
  */
 export const generateDocx = async (data: ResumeData) => {
   const { docx, saveAs } = window;
   if (!docx) { alert("组件加载中..."); return; }
 
-  const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, Table, TableRow, TableCell, WidthType, BorderStyle } = docx;
+  const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, Table, TableRow, TableCell, WidthType, BorderStyle, ImageRun } = docx;
 
   const style = data.style;
   const C = getStyleConstants(style);
+  
+  // Convert mm to twips (1 mm approx 56.7 twips)
+  const marginTwips = Math.round((style.pagePadding || 20) * 56.7);
 
   // --- Helpers ---
   const createBodyParagraph = (text: string, options?: { isItalic?: boolean, isSubtitle?: boolean }) => {
@@ -166,32 +169,115 @@ export const generateDocx = async (data: ResumeData) => {
   // --- Assembly ---
   const blocks: any[] = [];
   
-  // Header
-  blocks.push(new Paragraph({
-      children: [new TextRun({ text: data.profile.name, font: C.MAIN_FONT, bold: true, size: C.sizeH1, color: style.templateId === 'minimal' ? C.TEXT_COLOR : C.THEME_COLOR })],
-      heading: HeadingLevel.HEADING_1,
-      alignment: (style.templateId === 'modern' || style.templateId === 'minimal') ? AlignmentType.LEFT : AlignmentType.CENTER,
-      spacing: { after: Math.floor(style.fontSize * 0.4 * 20), line: C.LINE_SPACING_VAL, lineRule: "auto" },
-  }));
+  // -- Header Generation (Complex due to Avatar and Multiline Meta) --
+  const p = data.profile;
+  const joinMeta = (parts: (string | undefined)[]) => parts.filter(Boolean).join(" | ");
+  
+  // Construct Meta Lines
+  const metaLinesText: string[] = [];
+  const line1 = joinMeta([p.title, p.salary, p.jobStatus]);
+  if (line1) metaLinesText.push(line1);
+  const age = p.birthYear ? `${new Date().getFullYear() - parseInt(p.birthYear)}岁` : undefined;
+  const line2 = joinMeta([p.gender, age, p.workYears, p.location, p.nativePlace, p.politicalStatus]);
+  if (line2) metaLinesText.push(line2);
+  const line3 = joinMeta([p.phone, p.email]);
+  if (line3) metaLinesText.push(line3);
+  const line4 = joinMeta([p.height ? `${p.height}cm` : undefined, p.weight ? `${p.weight}kg` : undefined]);
+  if (line4) metaLinesText.push(line4);
 
-  // Meta
-  const metaParts = [];
-  const sep = " | ";
-  const addMeta = (t: string, isSep = false) => metaParts.push(new TextRun({ text: t, font: C.MAIN_FONT, size: C.sizeMeta, color: "000000" }));
-  if (data.profile.title) addMeta(data.profile.title);
-  if (data.profile.title && (data.profile.phone || data.profile.email)) addMeta(sep, true);
-  if (data.profile.phone) addMeta(data.profile.phone);
-  if (data.profile.phone && data.profile.email) addMeta(sep, true);
-  if (data.profile.email) addMeta(data.profile.email);
-  if (data.profile.email && data.profile.location) addMeta(sep, true);
-  if (data.profile.location) addMeta(data.profile.location);
+  // Helper for meta paragraphs
+  const createMetaP = (text: string, align: any) => new Paragraph({
+       children: [new TextRun({ text, font: C.MAIN_FONT, size: C.sizeMeta, color: "000000" })],
+       alignment: align,
+       spacing: { line: C.LINE_SPACING_VAL, lineRule: "auto" }
+  });
 
-  blocks.push(new Paragraph({
-      alignment: (style.templateId === 'modern' || style.templateId === 'minimal') ? AlignmentType.LEFT : AlignmentType.CENTER,
-      children: metaParts,
-      spacing: { after: Math.floor(style.fontSize * 1.5 * 20), line: C.LINE_SPACING_VAL, lineRule: "auto" },
-      border: style.templateId === 'minimal' ? { bottom: { style: BorderStyle.SINGLE, size: 6, color: "000000", space: 12 } } : undefined
-  }));
+  const hasAvatar = p.showAvatar && p.avatar;
+  const headerAlign = (hasAvatar || style.templateId === 'modern' || style.templateId === 'minimal') ? AlignmentType.LEFT : AlignmentType.CENTER;
+
+  if (hasAvatar) {
+      // 2-Column Table for Header: [ Text ] [ Image ]
+      // Need to convert Base64 to Buffer
+      let imgData = p.avatar!;
+      if (imgData.includes(',')) imgData = imgData.split(',')[1];
+      const imgBuffer = Uint8Array.from(atob(imgData), c => c.charCodeAt(0));
+
+      const headerTextCell = new TableCell({
+          width: { size: 80, type: WidthType.PERCENTAGE },
+          borders: { top: { style: BorderStyle.NONE }, bottom: { style: BorderStyle.NONE }, left: { style: BorderStyle.NONE }, right: { style: BorderStyle.NONE } },
+          children: [
+              new Paragraph({
+                  children: [new TextRun({ text: p.name, font: C.MAIN_FONT, bold: true, size: C.sizeH1, color: style.templateId === 'minimal' ? C.TEXT_COLOR : C.THEME_COLOR })],
+                  heading: HeadingLevel.HEADING_1,
+                  alignment: AlignmentType.LEFT,
+                  spacing: { after: 100 },
+              }),
+              ...metaLinesText.map(line => createMetaP(line, AlignmentType.LEFT))
+          ]
+      });
+
+      const headerImageCell = new TableCell({
+          width: { size: 20, type: WidthType.PERCENTAGE },
+          borders: { top: { style: BorderStyle.NONE }, bottom: { style: BorderStyle.NONE }, left: { style: BorderStyle.NONE }, right: { style: BorderStyle.NONE }, insideVertical: { style: BorderStyle.NONE } },
+          verticalAlign: "top",
+          children: [
+              new Paragraph({
+                  children: [
+                      new ImageRun({
+                          data: imgBuffer,
+                          transformation: { width: 100, height: 130 }, // Fixed size approx
+                          type: "png" // docx detects type usually, but 'png' is safe fallback
+                      })
+                  ],
+                  alignment: AlignmentType.RIGHT
+              })
+          ]
+      });
+
+      const headerTable = new Table({
+          width: { size: 100, type: WidthType.PERCENTAGE },
+          borders: { top: { style: BorderStyle.NONE }, bottom: { style: BorderStyle.NONE }, left: { style: BorderStyle.NONE }, right: { style: BorderStyle.NONE }, insideVertical: { style: BorderStyle.NONE }, insideHorizontal: { style: BorderStyle.NONE } },
+          rows: [new TableRow({ children: [headerTextCell, headerImageCell] })]
+      });
+
+      blocks.push(headerTable);
+
+      // Border for minimal style header (outside table)
+      if (style.templateId === 'minimal') {
+           blocks.push(new Paragraph({ border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: "000000", space: 12 } } }));
+      } else {
+           blocks.push(new Paragraph({ spacing: { after: Math.floor(style.fontSize * 1.5 * 20) } })); // Spacer
+      }
+
+  } else {
+      // Standard Text Header
+      blocks.push(new Paragraph({
+        children: [new TextRun({ text: p.name, font: C.MAIN_FONT, bold: true, size: C.sizeH1, color: style.templateId === 'minimal' ? C.TEXT_COLOR : C.THEME_COLOR })],
+        heading: HeadingLevel.HEADING_1,
+        alignment: headerAlign,
+        spacing: { after: Math.floor(style.fontSize * 0.4 * 20), line: C.LINE_SPACING_VAL, lineRule: "auto" },
+      }));
+
+      // Flatten meta for standard view or keep lines? 
+      // If we use lines, it's safer.
+      const metaChildren: any[] = [];
+      metaLinesText.forEach((line, idx) => {
+          metaChildren.push(new TextRun({ text: line, font: C.MAIN_FONT, size: C.sizeMeta, color: "000000" }));
+          if (idx < metaLinesText.length - 1) metaChildren.push(new TextRun({ text: "\n", font: C.MAIN_FONT })); // Line break? Paragraph break is better.
+      });
+
+      // Actually, creating multiple paragraphs for meta lines is safer for formatting
+      metaLinesText.forEach(line => {
+          blocks.push(createMetaP(line, headerAlign));
+      });
+
+      // Add bottom border/spacing
+      blocks.push(new Paragraph({
+        border: style.templateId === 'minimal' ? { bottom: { style: BorderStyle.SINGLE, size: 6, color: "000000", space: 12 } } : undefined,
+        spacing: { after: Math.floor(style.fontSize * 1.5 * 20) }
+      }));
+  }
+
 
   // Summary
   if (data.profile.summary) {
@@ -221,6 +307,18 @@ export const generateDocx = async (data: ResumeData) => {
               exp.position ? createBodyParagraph(exp.position, { isSubtitle: true, isItalic: true }) : null,
               exp.description ? createBodyParagraph(exp.description) : new Paragraph({ spacing: { after: C.PARA_SPACING_AFTER } })
           ].filter(Boolean));
+      } else if (config.type === 'internships') {
+           processItems(config.name || "实习经历", data.internships, (exp) => [
+              createItemRow(exp.company, `${exp.startDate} - ${exp.endDate}`),
+              exp.position ? createBodyParagraph(exp.position, { isSubtitle: true, isItalic: true }) : null,
+              exp.description ? createBodyParagraph(exp.description) : new Paragraph({ spacing: { after: C.PARA_SPACING_AFTER } })
+          ].filter(Boolean));
+      } else if (config.type === 'campus') {
+           processItems(config.name || "校园经历", data.campus, (exp) => [
+              createItemRow(exp.company, `${exp.startDate} - ${exp.endDate}`),
+              exp.position ? createBodyParagraph(exp.position, { isSubtitle: true, isItalic: true }) : null,
+              exp.description ? createBodyParagraph(exp.description) : new Paragraph({ spacing: { after: C.PARA_SPACING_AFTER } })
+          ].filter(Boolean));
       } else if (config.type === 'projects') {
            processItems(config.name || "项目经验", data.projects, (proj) => [
               createItemRow(proj.name, `${proj.startDate} - ${proj.endDate}`),
@@ -241,7 +339,7 @@ export const generateDocx = async (data: ResumeData) => {
 
   const doc = new Document({
     styles: { default: { document: { run: { font: C.MAIN_FONT, color: C.TEXT_COLOR, size: C.sizeNormal }, paragraph: { spacing: { line: C.LINE_SPACING_VAL } } } } },
-    sections: [{ properties: { page: { margin: { top: 1134, bottom: 1134, left: 1134, right: 1134 } } }, children: blocks }],
+    sections: [{ properties: { page: { margin: { top: marginTwips, bottom: marginTwips, left: marginTwips, right: marginTwips } } }, children: blocks }],
   });
 
   const blob = await Packer.toBlob(doc);
@@ -250,224 +348,44 @@ export const generateDocx = async (data: ResumeData) => {
 
 
 /**
- * Strategy 2: Block/Table Mode Export
- * Wraps EVERYTHING in Tables to act as "Text Boxes".
- * Precise layout, Editable text, robust against alignment issues.
+ * Strategy 2: Image-based Docx (Perfect Visual Fidelity)
+ * Takes a snapshot of the resume as an image and embeds it into the DOCX.
  */
-export const generateBlockDocx = async (data: ResumeData) => {
+export const generateImageBasedDocx = async (imageBlob: Blob, fileName: string) => {
     const { docx, saveAs } = window;
     if (!docx) { alert("组件加载中..."); return; }
-  
-    const { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, WidthType, BorderStyle, AlignmentType, HeadingLevel } = docx;
-  
-    const style = data.style;
-    const C = getStyleConstants(style);
-  
-    // --- Block Helpers ---
-    
-    // Create a generic container table row (no border)
-    const createBlockRow = (children: any[]) => {
-        return new TableRow({
+
+    const { Document, Packer, Paragraph, ImageRun } = docx;
+
+    // Convert Blob to ArrayBuffer then Uint8Array
+    const buffer = await imageBlob.arrayBuffer();
+    const image = new Uint8Array(buffer);
+
+    // Create a document with 0 margins containing the full page image
+    const doc = new Document({
+        sections: [{
+            properties: {
+                page: {
+                    margin: { top: 0, bottom: 0, left: 0, right: 0 }
+                }
+            },
             children: [
-                new TableCell({
-                    children: children,
-                    borders: { top: { style: BorderStyle.NONE }, bottom: { style: BorderStyle.NONE }, left: { style: BorderStyle.NONE }, right: { style: BorderStyle.NONE } },
-                    margins: { top: 0, bottom: 0, left: 0, right: 0 }, // Strict 0 margin
-                    width: { size: 100, type: WidthType.PERCENTAGE }
+                new Paragraph({
+                    children: [
+                        new ImageRun({
+                            data: image,
+                            transformation: {
+                                width: 794, // Standard A4 width in pixels at 96 DPI
+                                height: 1123 
+                            },
+                            type: "png"
+                        })
+                    ]
                 })
             ]
-        });
-    };
-
-    // Main wrapper table for a section (encapsulates logic)
-    const createSectionBlock = (rows: any[]) => {
-        return new Table({
-            width: { size: 100, type: WidthType.PERCENTAGE },
-            borders: { top: { style: BorderStyle.NONE }, bottom: { style: BorderStyle.NONE }, left: { style: BorderStyle.NONE }, right: { style: BorderStyle.NONE }, insideHorizontal: { style: BorderStyle.NONE }, insideVertical: { style: BorderStyle.NONE } },
-            rows: rows,
-            margins: { top: 0, bottom: 0, left: 0, right: 0 },
-        });
-    };
-
-    // Precise Text Elements
-    const createP = (text: string, size: number, bold = false, italic = false, color = C.TEXT_COLOR, align = AlignmentType.LEFT, spacingAfter = 0) => {
-        return new Paragraph({
-            children: createRichTextRuns(text, { size, bold, italics: italic, color }, C.MAIN_FONT, C.THEME_COLOR),
-            alignment: align,
-            spacing: { after: spacingAfter, line: C.LINE_SPACING_VAL, lineRule: "auto" }
-        });
-    };
-
-    // Header Block
-    const headerRows = [];
-    const hAlign = (style.templateId === 'modern' || style.templateId === 'minimal') ? AlignmentType.LEFT : AlignmentType.CENTER;
-    
-    // Name
-    headerRows.push(createBlockRow([
-        createP(data.profile.name, C.sizeH1, true, false, style.templateId === 'minimal' ? C.TEXT_COLOR : C.THEME_COLOR, hAlign, Math.floor(style.fontSize * 0.4 * 20))
-    ]));
-
-    // Meta
-    const metaParts = [];
-    const sep = " | ";
-    const addMeta = (t: string) => metaParts.push(new TextRun({ text: t, font: C.MAIN_FONT, size: C.sizeMeta, color: "000000" }));
-    const addSep = () => metaParts.push(new TextRun({ text: sep, font: C.MAIN_FONT, size: C.sizeMeta, color: "000000" }));
-
-    if (data.profile.title) { addMeta(data.profile.title); if(data.profile.phone||data.profile.email) addSep(); }
-    if (data.profile.phone) { addMeta(data.profile.phone); if(data.profile.email) addSep(); }
-    if (data.profile.email) { addMeta(data.profile.email); if(data.profile.location) addSep(); }
-    if (data.profile.location) { addMeta(data.profile.location); }
-
-    const metaP = new Paragraph({
-        children: metaParts,
-        alignment: hAlign,
-        spacing: { after: Math.floor(style.fontSize * 1.5 * 20), line: C.LINE_SPACING_VAL },
-        border: style.templateId === 'minimal' ? { bottom: { style: BorderStyle.SINGLE, size: 6, color: "000000", space: 12 } } : undefined
+        }]
     });
 
-    headerRows.push(createBlockRow([metaP]));
-
-    // Section Title Generator
-    const createTitleRow = (title: string) => {
-        let borderConfig = undefined;
-        if (style.templateId === 'modern') borderConfig = { bottom: { color: C.THEME_COLOR, space: 1, style: BorderStyle.SINGLE, size: 6 } };
-        else if (style.templateId === 'classic') borderConfig = { bottom: { color: "E0E0E0", space: 1, style: BorderStyle.SINGLE, size: 6 } };
-        
-        const p = new Paragraph({
-            children: [new TextRun({
-                text: style.templateId === 'minimal' ? title.toUpperCase() : title,
-                font: C.MAIN_FONT, bold: true, size: C.sizeH2,
-                color: style.templateId === 'minimal' ? C.TEXT_COLOR : C.THEME_COLOR,
-            })],
-            heading: HeadingLevel.HEADING_2,
-            alignment: AlignmentType.LEFT,
-            border: borderConfig,
-            spacing: { 
-                before: Math.floor(style.fontSize * 1.4 * 20), 
-                after: Math.floor(style.fontSize * 0.6 * 20),
-                line: C.LINE_SPACING_VAL 
-            }
-        });
-        return createBlockRow([p]);
-    };
-
-    // Item Generator (The "Text Box" magic)
-    const createItemBlock = (title: string, date: string, subtitle: string, desc: string) => {
-        const itemRows = [];
-        
-        // Row 1: Title (Left) + Date (Right) in a nested 2-col table
-        const titleTable = new Table({
-            width: { size: 100, type: WidthType.PERCENTAGE },
-            borders: { top: { style: BorderStyle.NONE }, bottom: { style: BorderStyle.NONE }, left: { style: BorderStyle.NONE }, right: { style: BorderStyle.NONE }, insideVertical: { style: BorderStyle.NONE } },
-            margins: { top: 0, bottom: 0, left: 0, right: 0 },
-            rows: [new TableRow({
-                children: [
-                    new TableCell({
-                        children: [createP(title, C.sizeItemTitle, true, false, C.TEXT_COLOR)],
-                        width: { size: 75, type: WidthType.PERCENTAGE },
-                        margins: { top: 0, bottom: 0, left: 0, right: 0 },
-                        borders: { top: { style: BorderStyle.NONE }, bottom: { style: BorderStyle.NONE }, left: { style: BorderStyle.NONE }, right: { style: BorderStyle.NONE } },
-                    }),
-                    new TableCell({
-                        children: [createP(date, C.sizeDate, false, false, C.SUBTITLE_COLOR, AlignmentType.RIGHT)],
-                        width: { size: 25, type: WidthType.PERCENTAGE },
-                        verticalAlign: "center",
-                        margins: { top: 0, bottom: 0, left: 0, right: 0 },
-                        borders: { top: { style: BorderStyle.NONE }, bottom: { style: BorderStyle.NONE }, left: { style: BorderStyle.NONE }, right: { style: BorderStyle.NONE } },
-                    })
-                ]
-            })]
-        });
-        itemRows.push(createBlockRow([titleTable]));
-
-        // Row 2: Subtitle
-        if (subtitle) {
-            itemRows.push(createBlockRow([createP(subtitle, C.sizeNormal, false, true, C.TEXT_COLOR, AlignmentType.LEFT, 40)]));
-        }
-
-        // Row 3: Desc
-        if (desc) {
-            itemRows.push(createBlockRow([createP(desc, C.sizeNormal, false, false, C.TEXT_COLOR, AlignmentType.JUSTIFIED, C.PARA_SPACING_AFTER)]));
-        } else {
-            // Spacer
-            itemRows.push(createBlockRow([new Paragraph({ spacing: { after: C.PARA_SPACING_AFTER } })]));
-        }
-
-        return createSectionBlock(itemRows);
-    };
-
-    // --- Building the Doc Content ---
-    const allContent = [];
-
-    // 1. Header Block
-    allContent.push(createSectionBlock(headerRows));
-
-    // 2. Summary Block
-    if (data.profile.summary) {
-        allContent.push(createSectionBlock([
-            createTitleRow("个人简介"),
-            createBlockRow([createP(data.profile.summary, C.sizeNormal, false, false, C.TEXT_COLOR, AlignmentType.JUSTIFIED, C.PARA_SPACING_AFTER)])
-        ]));
-    }
-
-    // 3. Dynamic Blocks
-    data.sectionOrder.forEach(config => {
-        if (!config.visible) return;
-        
-        // Wrapper for the whole section (Title + Items)
-        const sectionRows = [];
-        const sectionTitle = config.name || 
-            (config.type === 'education' ? "教育背景" : 
-             config.type === 'experience' ? "工作经历" : 
-             config.type === 'projects' ? "项目经验" : "");
-
-        // Find items
-        let items: any[] = [];
-        let renderItem: (i: any) => any = () => {};
-
-        if (config.type === 'education') {
-            items = data.education;
-            renderItem = (e: any) => createItemBlock(e.school, `${e.startDate} - ${e.endDate}`, e.degree, e.description);
-        } else if (config.type === 'experience') {
-            items = data.experience;
-            renderItem = (e: any) => createItemBlock(e.company, `${e.startDate} - ${e.endDate}`, e.position, e.description);
-        } else if (config.type === 'projects') {
-            items = data.projects;
-            renderItem = (e: any) => createItemBlock(e.name, `${e.startDate} - ${e.endDate}`, e.role, e.description);
-        } else if (config.type === 'custom') {
-            const s = data.customSections.find(cs => cs.id === config.id);
-            if (s) {
-                items = s.items;
-                // Custom logic: if no date, title is just bold text
-                renderItem = (i: any) => {
-                    if (!i.date) return createItemBlock(i.title, "", i.subtitle, i.description);
-                    return createItemBlock(i.title, i.date, i.subtitle, i.description);
-                };
-                // Override title
-                sectionRows.push(createTitleRow(s.title));
-            }
-        }
-
-        if (config.type !== 'custom') sectionRows.push(createTitleRow(sectionTitle));
-        
-        // For each item, we actually want to push the Block Table into the Section Row? 
-        // No, we can just push multiple tables into the root doc children.
-        // But to keep it "Blocky", let's make the section title a table, and each item a table.
-        // We accumulate them in `allContent`.
-        
-        if (items.length > 0) {
-            allContent.push(createSectionBlock(sectionRows)); // Pushes the Title
-            items.forEach(item => {
-                allContent.push(renderItem(item)); // Pushes the Item Table
-            });
-        }
-    });
-
-    const doc = new Document({
-      styles: { default: { document: { run: { font: C.MAIN_FONT, color: C.TEXT_COLOR, size: C.sizeNormal }, paragraph: { spacing: { line: C.LINE_SPACING_VAL } } } } },
-      sections: [{ properties: { page: { margin: { top: 1134, bottom: 1134, left: 1134, right: 1134 } } }, children: allContent }],
-    });
-  
-    const blob = await Packer.toBlob(doc);
-    saveAs(blob, `${data.profile.name || 'resume'}_block_layout.docx`);
+    const docBlob = await Packer.toBlob(doc);
+    saveAs(docBlob, `${fileName}_image.docx`);
 };

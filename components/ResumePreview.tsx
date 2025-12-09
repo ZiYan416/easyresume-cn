@@ -70,18 +70,19 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({ data, scale }) => {
         lineHeight: style.lineHeight,
         color: "#000000",
         fontSize: `${baseSize}pt`,
+        padding: `${style.pagePadding || 20}mm`,
       },
       h1: {
           fontSize: `${baseSize + 14}pt`, // approx 24pt if base is 10
           fontWeight: "bold",
           marginBottom: `${baseSize * 0.4}pt`,
           color: style.templateId === 'minimal' ? '#000' : style.themeColor,
-          textAlign: (style.templateId === 'modern' || style.templateId === 'minimal') ? 'left' as const : 'center' as const,
+          textAlign: (profile.showAvatar && profile.avatar) ? 'left' as const : ((style.templateId === 'modern' || style.templateId === 'minimal') ? 'left' as const : 'center' as const),
       },
       headerMeta: {
           fontSize: `${baseSize}pt`,
           color: "#000000",
-          textAlign: (style.templateId === 'modern' || style.templateId === 'minimal') ? 'left' as const : 'center' as const,
+          textAlign: (profile.showAvatar && profile.avatar) ? 'left' as const : ((style.templateId === 'modern' || style.templateId === 'minimal') ? 'left' as const : 'center' as const),
           paddingBottom: style.templateId === 'minimal' ? '12pt' : '0',
           borderBottom: style.templateId === 'minimal' ? '1pt solid #000' : 'none',
           marginBottom: `${baseSize * 1.5}pt`
@@ -130,27 +131,89 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({ data, scale }) => {
       </div>
   );
 
+  // Helper to join non-empty strings with separator
+  const joinMeta = (parts: (string | undefined)[], sep = " | ") => parts.filter(Boolean).join(sep);
+  
+  // Logic to build metadata lines
+  const metaLines = [];
+  
+  // Line 1: Job Title | Salary | Status
+  const line1 = joinMeta([profile.title, profile.salary, profile.jobStatus]);
+  if (line1) metaLines.push(line1);
+
+  // Line 2: Gender | Age | Years | Location | Origin
+  const age = profile.birthYear ? `${new Date().getFullYear() - parseInt(profile.birthYear)}岁` : undefined;
+  const line2 = joinMeta([profile.gender, age, profile.workYears, profile.location, profile.nativePlace, profile.politicalStatus]);
+  if (line2) metaLines.push(line2);
+
+  // Line 3: Contact
+  const line3 = joinMeta([profile.phone, profile.email]);
+  if (line3) metaLines.push(line3);
+
+  // Extra line for Height/Weight if needed
+  const line4 = joinMeta([profile.height ? `${profile.height}cm` : undefined, profile.weight ? `${profile.weight}kg` : undefined]);
+  if (line4) metaLines.push(line4);
+
+
+  const renderHeader = () => {
+      const textAlign = dynamicStyles.headerMeta.textAlign;
+      
+      const MetaContent = () => (
+          <>
+            {metaLines.map((line, idx) => (
+                <div key={idx} style={{ marginBottom: '2pt' }}>{line}</div>
+            ))}
+          </>
+      );
+
+      if (profile.showAvatar && profile.avatar) {
+          return (
+              <div style={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between', 
+                  alignItems: 'flex-start',
+                  marginBottom: dynamicStyles.headerMeta.marginBottom,
+                  paddingBottom: dynamicStyles.headerMeta.paddingBottom,
+                  borderBottom: dynamicStyles.headerMeta.borderBottom
+              }}>
+                  <div style={{ flex: 1 }}>
+                      <h1 style={{ ...dynamicStyles.h1, textAlign: 'left', marginBottom: '8pt' }}>{profile.name || "您的姓名"}</h1>
+                      <div style={{ fontSize: dynamicStyles.headerMeta.fontSize, color: "#000", textAlign: 'left' }}>
+                          <MetaContent />
+                      </div>
+                  </div>
+                  <div style={{ width: '100pt', marginLeft: '20pt', flexShrink: 0 }}>
+                      <img 
+                        src={profile.avatar} 
+                        style={{ width: '100%', height: 'auto', maxHeight: '130pt', objectFit: 'cover', borderRadius: '4pt' }} 
+                        alt="Profile" 
+                      />
+                  </div>
+              </div>
+          );
+      }
+
+      return (
+          <header>
+            <h1 style={dynamicStyles.h1}>{profile.name || "您的姓名"}</h1>
+            <div style={dynamicStyles.headerMeta}>
+              <MetaContent />
+            </div>
+          </header>
+      );
+  };
+
+
   return (
     <div
       className="origin-top transition-transform duration-200"
       style={{ transform: `scale(${scale})` }}
     >
       <div id="resume-preview-content" className="a4-paper" style={dynamicStyles.page}>
-        {/* Header (Always First) */}
-        <header>
-          <h1 style={dynamicStyles.h1}>{profile.name || "您的姓名"}</h1>
-          <div style={dynamicStyles.headerMeta} className={`flex gap-1 flex-wrap ${(style.templateId === 'modern' || style.templateId === 'minimal') ? '' : 'justify-center'}`}>
-            {profile.title && <span>{profile.title}</span>}
-            {profile.title && (profile.phone || profile.email) && <span> | </span>}
-            {profile.phone && <span>{profile.phone}</span>}
-            {profile.phone && profile.email && <span> | </span>}
-            {profile.email && <span>{profile.email}</span>}
-            {profile.email && profile.location && <span> | </span>}
-            {profile.location && <span>{profile.location}</span>}
-          </div>
-        </header>
+        
+        {renderHeader()}
 
-        {/* Summary (Always Second) */}
+        {/* Summary */}
         {profile.summary && (
           <section>
             <SectionTitle>个人简介</SectionTitle>
@@ -164,70 +227,60 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({ data, scale }) => {
         {data.sectionOrder.map(config => {
             if (!config.visible) return null;
 
-            if (config.type === 'education' && data.education.length > 0) {
+            // Generalize standard sections render logic
+            let items: any[] = [];
+            let name = "";
+            let fields: { title: string, date: string, subtitle?: string, desc?: string }[] = [];
+
+            if (config.type === 'education') {
+                items = data.education;
+                name = config.name || "教育背景";
+                fields = items.map(i => ({ title: i.school, date: `${i.startDate} - ${i.endDate}`, subtitle: i.degree, desc: i.description }));
+            } else if (config.type === 'experience') {
+                items = data.experience;
+                name = config.name || "工作经历";
+                fields = items.map(i => ({ title: i.company, date: `${i.startDate} - ${i.endDate}`, subtitle: i.position, desc: i.description }));
+            } else if (config.type === 'internships') {
+                items = data.internships;
+                name = config.name || "实习经历";
+                fields = items.map(i => ({ title: i.company, date: `${i.startDate} - ${i.endDate}`, subtitle: i.position, desc: i.description }));
+            } else if (config.type === 'campus') {
+                items = data.campus;
+                name = config.name || "校园经历";
+                fields = items.map(i => ({ title: i.company, date: `${i.startDate} - ${i.endDate}`, subtitle: i.position, desc: i.description }));
+            } else if (config.type === 'projects') {
+                items = data.projects;
+                name = config.name || "项目经验";
+                fields = items.map(i => ({ title: i.name, date: `${i.startDate} - ${i.endDate}`, subtitle: i.role, desc: i.description }));
+            } else if (config.type === 'custom') {
+                const s = data.customSections.find(s => s.id === config.id);
+                if (!s || s.items.length === 0) return null;
                 return (
-                    <section key={config.id}>
-                        <SectionTitle>{config.name || "教育背景"}</SectionTitle>
+                    <section key={s.id}>
+                        <SectionTitle>{s.title}</SectionTitle>
                         <div>
-                        {data.education.map((edu) => (
-                            <div key={edu.id}>
-                            <ItemRow title={edu.school || "学校名称"} date={`${edu.startDate} - ${edu.endDate}`} />
-                            {edu.degree && <div style={dynamicStyles.itemSubtitle}>{edu.degree}</div>}
-                            {edu.description && <p style={dynamicStyles.itemBody}><RichTextRenderer text={edu.description} themeColor={style.themeColor} /></p>}
-                            </div>
-                        ))}
-                        </div>
-                    </section>
-                );
-            }
-
-            if (config.type === 'experience' && data.experience.length > 0) {
-                return (
-                    <section key={config.id}>
-                        <SectionTitle>{config.name || "工作经历"}</SectionTitle>
-                        <div>
-                        {data.experience.map((exp) => (
-                            <div key={exp.id}>
-                            <ItemRow title={exp.company || "公司名称"} date={`${exp.startDate} - ${exp.endDate}`} />
-                            {exp.position && <div style={dynamicStyles.itemSubtitle}>{exp.position}</div>}
-                            {exp.description && <p style={dynamicStyles.itemBody}><RichTextRenderer text={exp.description} themeColor={style.themeColor} /></p>}
-                            </div>
-                        ))}
-                        </div>
-                    </section>
-                );
-            }
-
-            if (config.type === 'projects' && data.projects.length > 0) {
-                 return (
-                    <section key={config.id}>
-                        <SectionTitle>{config.name || "项目经验"}</SectionTitle>
-                        <div>
-                        {data.projects.map((proj) => (
-                            <div key={proj.id}>
-                            <ItemRow title={proj.name || "项目名称"} date={`${proj.startDate} - ${proj.endDate}`} />
-                            {proj.role && <div style={dynamicStyles.itemSubtitle}>{proj.role}</div>}
-                            {proj.description && <p style={dynamicStyles.itemBody}><RichTextRenderer text={proj.description} themeColor={style.themeColor} /></p>}
-                            </div>
-                        ))}
-                        </div>
-                    </section>
-                );
-            }
-
-            if (config.type === 'custom') {
-                const section = data.customSections.find(s => s.id === config.id);
-                if (!section || section.items.length === 0) return null;
-
-                return (
-                    <section key={section.id}>
-                        <SectionTitle>{section.title}</SectionTitle>
-                        <div>
-                            {section.items.map(item => (
+                            {s.items.map(item => (
                                 <div key={item.id}>
                                     <ItemRow title={item.title} date={item.date} />
                                     {item.subtitle && <div style={dynamicStyles.itemSubtitle}>{item.subtitle}</div>}
                                     {item.description && <p style={dynamicStyles.itemBody}><RichTextRenderer text={item.description} themeColor={style.themeColor} /></p>}
+                                </div>
+                            ))}
+                        </div>
+                    </section>
+                );
+            }
+
+            if (items.length > 0) {
+                return (
+                    <section key={config.id}>
+                        <SectionTitle>{name}</SectionTitle>
+                        <div>
+                            {fields.map((f, idx) => (
+                                <div key={idx}>
+                                    <ItemRow title={f.title || ""} date={f.date} />
+                                    {f.subtitle && <div style={dynamicStyles.itemSubtitle}>{f.subtitle}</div>}
+                                    {f.desc && <p style={dynamicStyles.itemBody}><RichTextRenderer text={f.desc} themeColor={style.themeColor} /></p>}
                                 </div>
                             ))}
                         </div>

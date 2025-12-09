@@ -6,6 +6,18 @@ export interface Profile {
   phone: string;
   location: string;
   summary: string;
+  // New Profile Pro fields
+  avatar?: string; // Base64 string
+  showAvatar: boolean;
+  gender?: string;
+  birthYear?: string; // YYYY
+  workYears?: string; // e.g. "3年"
+  jobStatus?: string; // e.g. "离职-随时到岗"
+  salary?: string; // e.g. "15k-20k"
+  nativePlace?: string;
+  politicalStatus?: string;
+  height?: string;
+  weight?: string;
 }
 
 export interface Education {
@@ -19,8 +31,8 @@ export interface Education {
 
 export interface Experience {
   id: string;
-  company: string;
-  position: string;
+  company: string; // Used as "Organization" for campus
+  position: string; // Used as "Role" for campus
   startDate: string;
   endDate: string;
   description: string;
@@ -57,7 +69,7 @@ export interface CustomSection {
 }
 
 // Section Management
-export type SectionType = 'education' | 'experience' | 'projects' | 'custom';
+export type SectionType = 'education' | 'experience' | 'projects' | 'internships' | 'campus' | 'custom';
 
 export interface SectionConfig {
   id: string;
@@ -77,12 +89,15 @@ export interface ResumeStyle {
   lineHeight: number; // e.g. 1.25, 1.5
   paragraphSpacing: number; // e.g. 4, 8 (pt)
   fontSize: number; // Base font size in pt (e.g., 10.5, 11, 12)
+  pagePadding: number; // Page margin in mm
 }
 
 export interface ResumeData {
   profile: Profile;
   education: Education[];
   experience: Experience[];
+  internships: Experience[]; // New
+  campus: Experience[];      // New
   projects: Project[];
   skills: Skill[];
   customSections: CustomSection[];

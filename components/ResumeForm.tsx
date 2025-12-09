@@ -1,7 +1,7 @@
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { ResumeData, Education, Experience, Project, CustomSection, CustomItem, SectionConfig } from '../types';
-import { Plus, Trash2, ChevronDown, ChevronUp, Layers, Bold, Italic, Highlighter, Briefcase, GraduationCap, FolderGit2, User, ArrowUp, ArrowDown, Eye, EyeOff } from 'lucide-react';
+import { Plus, Trash2, ChevronDown, ChevronUp, Layers, Bold, Italic, Highlighter, Briefcase, GraduationCap, FolderGit2, User, ArrowUp, ArrowDown, Eye, EyeOff, Camera, MapPin, Building2, Calendar } from 'lucide-react';
 
 interface ResumeFormProps {
   data: ResumeData;
@@ -82,26 +82,44 @@ const RichTextarea: React.FC<{
     )
 }
 
-const InputField: React.FC<React.InputHTMLAttributes<HTMLInputElement>> = (props) => (
-    <input 
-        {...props}
-        className={`border border-slate-200 p-3 rounded-lg text-sm bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-all outline-none placeholder:text-slate-400 ${props.className}`}
-    />
+const InputField: React.FC<React.InputHTMLAttributes<HTMLInputElement> & { label?: string }> = ({ label, className, ...props }) => (
+    <div className="flex flex-col gap-1">
+        {label && <label className="text-xs font-medium text-slate-500 ml-1">{label}</label>}
+        <input 
+            {...props}
+            className={`border border-slate-200 p-2.5 rounded-lg text-sm bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-all outline-none placeholder:text-slate-400 ${className}`}
+        />
+    </div>
 )
 
 
 const ResumeForm: React.FC<ResumeFormProps> = ({ data, onChange }) => {
   const [activeSection, setActiveSection] = useState<string | null>('profile');
+  const [showMoreProfile, setShowMoreProfile] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
 
   const toggleSection = (section: string) => {
     setActiveSection(activeSection === section ? null : section);
   };
 
-  const updateProfile = (field: string, value: string) => {
+  const updateProfile = (field: string, value: any) => {
     onChange({
       ...data,
       profile: { ...data.profile, [field]: value },
     });
+  };
+
+  const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+          if (event.target?.result) {
+              updateProfile('avatar', event.target.result as string);
+          }
+      };
+      reader.readAsDataURL(file);
   };
 
   // Generic handler for array based fields
@@ -290,9 +308,12 @@ const ResumeForm: React.FC<ResumeFormProps> = ({ data, onChange }) => {
                             onClick={(e) => { 
                                 e.stopPropagation(); 
                                 if (!isActive) toggleSection(config.id);
-                                if (config.id === 'education') addItem('education', { id: Date.now().toString(), school: '', degree: '', startDate: '', endDate: '', description: '' });
-                                if (config.id === 'experience') addItem('experience', { id: Date.now().toString(), company: '', position: '', startDate: '', endDate: '', description: '' });
-                                if (config.id === 'projects') addItem('projects', { id: Date.now().toString(), name: '', role: '', startDate: '', endDate: '', description: '' });
+                                const newId = Date.now().toString();
+                                if (config.id === 'education') addItem('education', { id: newId, school: '', degree: '', startDate: '', endDate: '', description: '' });
+                                if (config.id === 'experience') addItem('experience', { id: newId, company: '', position: '', startDate: '', endDate: '', description: '' });
+                                if (config.id === 'projects') addItem('projects', { id: newId, name: '', role: '', startDate: '', endDate: '', description: '' });
+                                if (config.id === 'internships') addItem('internships', { id: newId, company: '', position: '', startDate: '', endDate: '', description: '' });
+                                if (config.id === 'campus') addItem('campus', { id: newId, company: '', position: '', startDate: '', endDate: '', description: '' });
                             }}
                             className="text-blue-600 hover:text-blue-800 hover:bg-blue-50 p-1.5 rounded transition-colors ml-1"
                             title="添加条目"
@@ -345,47 +366,75 @@ const ResumeForm: React.FC<ResumeFormProps> = ({ data, onChange }) => {
           {activeSection === 'profile' ? <ChevronUp size={20} className="text-slate-400" /> : <ChevronDown size={20} className="text-slate-400" />}
         </button>
         {activeSection === 'profile' && (
-          <div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-4">
-            <InputField
-              type="text"
-              placeholder="姓名"
-              value={data.profile.name}
-              onChange={(e) => updateProfile('name', e.target.value)}
-            />
-             <InputField
-              type="text"
-              placeholder="求职意向 / 职位"
-              value={data.profile.title}
-              onChange={(e) => updateProfile('title', e.target.value)}
-            />
-            <InputField
-              type="text"
-              placeholder="电话"
-              value={data.profile.phone}
-              onChange={(e) => updateProfile('phone', e.target.value)}
-            />
-            <InputField
-              type="email"
-              placeholder="电子邮箱"
-              value={data.profile.email}
-              onChange={(e) => updateProfile('email', e.target.value)}
-            />
-            <InputField
-              type="text"
-              placeholder="所在城市 (例如: 上海)"
-              className="md:col-span-2"
-              value={data.profile.location}
-              onChange={(e) => updateProfile('location', e.target.value)}
-            />
-            <div className="md:col-span-2">
-                <RichTextarea
-                    id="profile-summary"
-                    placeholder="个人简介 (简要描述你的优势)"
-                    className="w-full h-24"
-                    value={data.profile.summary}
-                    onChange={(val) => updateProfile('summary', val)}
-                />
-            </div>
+          <div className="p-5">
+             <div className="flex gap-6 flex-col md:flex-row">
+                 {/* Avatar Area */}
+                 <div className="flex flex-col items-center gap-2 shrink-0">
+                     <div 
+                        onClick={() => avatarInputRef.current?.click()}
+                        className="w-24 h-24 rounded-full bg-slate-100 border-2 border-dashed border-slate-300 flex items-center justify-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-all overflow-hidden relative group"
+                     >
+                         {data.profile.avatar ? (
+                             <img src={data.profile.avatar} alt="Avatar" className="w-full h-full object-cover" />
+                         ) : (
+                             <Camera size={24} className="text-slate-400 group-hover:text-blue-400" />
+                         )}
+                         <input type="file" ref={avatarInputRef} onChange={handleAvatarUpload} accept="image/*" className="hidden" />
+                     </div>
+                     <button 
+                        onClick={() => updateProfile('showAvatar', !data.profile.showAvatar)}
+                        className={`text-xs px-2 py-1 rounded border ${data.profile.showAvatar ? 'bg-blue-50 border-blue-200 text-blue-600' : 'bg-slate-50 border-slate-200 text-slate-400'}`}
+                     >
+                         {data.profile.showAvatar ? '显示照片' : '隐藏照片'}
+                     </button>
+                 </div>
+
+                 {/* Inputs Grid */}
+                 <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <InputField label="姓名" value={data.profile.name} onChange={(e) => updateProfile('name', e.target.value)} />
+                    <InputField label="求职意向 / 职位" value={data.profile.title} onChange={(e) => updateProfile('title', e.target.value)} />
+                    
+                    <InputField label="手机号码" value={data.profile.phone} onChange={(e) => updateProfile('phone', e.target.value)} />
+                    <InputField label="电子邮箱" value={data.profile.email} onChange={(e) => updateProfile('email', e.target.value)} />
+
+                    <div className="md:col-span-2 grid grid-cols-2 gap-4">
+                         <InputField label="工作经验 (如：3年 / 应届生)" value={data.profile.workYears} onChange={(e) => updateProfile('workYears', e.target.value)} />
+                         <InputField label="所在城市" value={data.profile.location} onChange={(e) => updateProfile('location', e.target.value)} />
+                    </div>
+
+                    {/* Collapsible Extended Info */}
+                    {showMoreProfile && (
+                        <div className="md:col-span-2 grid grid-cols-2 md:grid-cols-4 gap-4 animate-in fade-in slide-in-from-top-2">
+                             <InputField label="性别" value={data.profile.gender} onChange={(e) => updateProfile('gender', e.target.value)} />
+                             <InputField label="出生年份 (如：1998)" value={data.profile.birthYear} onChange={(e) => updateProfile('birthYear', e.target.value)} />
+                             <InputField label="求职状态" placeholder="离职/在职" value={data.profile.jobStatus} onChange={(e) => updateProfile('jobStatus', e.target.value)} />
+                             <InputField label="期望薪资" value={data.profile.salary} onChange={(e) => updateProfile('salary', e.target.value)} />
+                             
+                             <InputField label="籍贯" value={data.profile.nativePlace} onChange={(e) => updateProfile('nativePlace', e.target.value)} />
+                             <InputField label="政治面貌" value={data.profile.politicalStatus} onChange={(e) => updateProfile('politicalStatus', e.target.value)} />
+                             <InputField label="身高 (cm)" value={data.profile.height} onChange={(e) => updateProfile('height', e.target.value)} />
+                             <InputField label="体重 (kg)" value={data.profile.weight} onChange={(e) => updateProfile('weight', e.target.value)} />
+                        </div>
+                    )}
+                    
+                    <button 
+                        onClick={() => setShowMoreProfile(!showMoreProfile)}
+                        className="md:col-span-2 text-xs text-center text-blue-500 hover:text-blue-700 py-1"
+                    >
+                        {showMoreProfile ? "收起更多信息" : "展开更多信息 (性别、年龄、薪资等)"}
+                    </button>
+
+                    <div className="md:col-span-2 mt-2">
+                        <RichTextarea
+                            id="profile-summary"
+                            placeholder="个人简介 (简要描述你的优势)"
+                            className="w-full h-24"
+                            value={data.profile.summary}
+                            onChange={(val) => updateProfile('summary', val)}
+                        />
+                    </div>
+                 </div>
+             </div>
           </div>
         )}
       </div>
@@ -496,6 +545,111 @@ const ResumeForm: React.FC<ResumeFormProps> = ({ data, onChange }) => {
                 </div>
               );
           }
+
+          // --- INTERNSHIPS ---
+          if (config.type === 'internships') {
+              return (
+                <div key={config.id} className={`bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden ${!config.visible ? 'opacity-70 border-dashed' : ''}`}>
+                    {renderSectionHeader(config, index, <Briefcase size={18} className="text-slate-500" />, config.name || "实习经历")}
+                    {activeSection === 'internships' && config.visible && (
+                    <div className="p-5 space-y-8">
+                        {data.internships.map((exp) => (
+                        <div key={exp.id} className="relative border-b border-dashed border-slate-200 pb-6 last:border-0 last:pb-0">
+                            <button onClick={() => removeItem('internships', exp.id)} className="absolute -top-1 right-0 text-slate-400 hover:text-red-500 transition-colors">
+                            <Trash2 size={16} />
+                            </button>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pr-6">
+                            <InputField
+                                placeholder="实习公司"
+                                value={exp.company}
+                                onChange={(e) => updateItem('internships', exp.id, 'company', e.target.value)}
+                            />
+                            <InputField
+                                placeholder="职位/角色"
+                                value={exp.position}
+                                onChange={(e) => updateItem('internships', exp.id, 'position', e.target.value)}
+                            />
+                            <InputField
+                                placeholder="开始时间"
+                                value={exp.startDate}
+                                onChange={(e) => updateItem('internships', exp.id, 'startDate', e.target.value)}
+                            />
+                            <InputField
+                                placeholder="结束时间"
+                                value={exp.endDate}
+                                onChange={(e) => updateItem('internships', exp.id, 'endDate', e.target.value)}
+                            />
+                            <div className="md:col-span-2">
+                                <RichTextarea
+                                    id={`int-${exp.id}`}
+                                    placeholder="实习内容与成果描述"
+                                    className="w-full h-24"
+                                    value={exp.description}
+                                    onChange={(val) => updateItem('internships', exp.id, 'description', val)}
+                                />
+                            </div>
+                            </div>
+                        </div>
+                        ))}
+                        {data.internships.length === 0 && <p className="text-slate-400 text-sm text-center py-2">点击标题栏 + 添加实习经历</p>}
+                    </div>
+                    )}
+                </div>
+              );
+          }
+
+           // --- CAMPUS ---
+          if (config.type === 'campus') {
+              return (
+                <div key={config.id} className={`bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden ${!config.visible ? 'opacity-70 border-dashed' : ''}`}>
+                    {renderSectionHeader(config, index, <Building2 size={18} className="text-slate-500" />, config.name || "校园经历")}
+                    {activeSection === 'campus' && config.visible && (
+                    <div className="p-5 space-y-8">
+                        {data.campus.map((exp) => (
+                        <div key={exp.id} className="relative border-b border-dashed border-slate-200 pb-6 last:border-0 last:pb-0">
+                            <button onClick={() => removeItem('campus', exp.id)} className="absolute -top-1 right-0 text-slate-400 hover:text-red-500 transition-colors">
+                            <Trash2 size={16} />
+                            </button>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pr-6">
+                            <InputField
+                                placeholder="组织/活动名称"
+                                value={exp.company}
+                                onChange={(e) => updateItem('campus', exp.id, 'company', e.target.value)}
+                            />
+                            <InputField
+                                placeholder="担任角色"
+                                value={exp.position}
+                                onChange={(e) => updateItem('campus', exp.id, 'position', e.target.value)}
+                            />
+                            <InputField
+                                placeholder="开始时间"
+                                value={exp.startDate}
+                                onChange={(e) => updateItem('campus', exp.id, 'startDate', e.target.value)}
+                            />
+                            <InputField
+                                placeholder="结束时间"
+                                value={exp.endDate}
+                                onChange={(e) => updateItem('campus', exp.id, 'endDate', e.target.value)}
+                            />
+                            <div className="md:col-span-2">
+                                <RichTextarea
+                                    id={`cam-${exp.id}`}
+                                    placeholder="经历描述"
+                                    className="w-full h-24"
+                                    value={exp.description}
+                                    onChange={(val) => updateItem('campus', exp.id, 'description', val)}
+                                />
+                            </div>
+                            </div>
+                        </div>
+                        ))}
+                        {data.campus.length === 0 && <p className="text-slate-400 text-sm text-center py-2">点击标题栏 + 添加校园经历</p>}
+                    </div>
+                    )}
+                </div>
+              );
+          }
+
 
           // --- PROJECTS ---
           if (config.type === 'projects') {

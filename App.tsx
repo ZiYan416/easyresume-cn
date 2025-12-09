@@ -1,9 +1,9 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { ResumeData, TemplateId } from './types';
+import { ResumeData, TemplateId, CustomSection } from './types';
 import ResumeForm from './components/ResumeForm';
 import ResumePreview from './components/ResumePreview';
-import { generateDocx, generateBlockDocx } from './services/docxGenerator';
+import { generateDocx, generateImageBasedDocx } from './services/docxGenerator';
 import { Download, Layout, Upload, Image as ImageIcon, FileType, Palette, Type, Sliders, ChevronLeft, ChevronRight, Settings, PenTool, Check, FileText, ChevronDown } from 'lucide-react';
 
 // Default data
@@ -14,7 +14,8 @@ const initialData: ResumeData = {
       themeColor: '#2E74B5',
       lineHeight: 1.25,
       paragraphSpacing: 8,
-      fontSize: 10.5
+      fontSize: 10.5,
+      pagePadding: 20
   },
   profile: {
     name: "您的姓名",
@@ -22,7 +23,18 @@ const initialData: ResumeData = {
     email: "email@example.com",
     phone: "13800000000",
     location: "城市",
-    summary: "这里是个人简介区域。您可以在左侧编辑区输入您的自我评价、核心优势或职业目标。选中文本点击上方工具栏的 <b>B</b> 可加粗，<c>A</c> 可高亮。",
+    summary: "这里是个人简介区域。您可以在左侧编辑区输入您的自我评价、核心优势或职业目标。",
+    showAvatar: true,
+    avatar: "", 
+    gender: "男",
+    birthYear: "1998",
+    workYears: "应届生",
+    jobStatus: "随时到岗",
+    salary: "面议",
+    nativePlace: "",
+    politicalStatus: "",
+    height: "",
+    weight: ""
   },
   education: [
     {
@@ -31,26 +43,75 @@ const initialData: ResumeData = {
       degree: "专业名称 - 学位",
       startDate: "2020-09",
       endDate: "2024-06",
-      description: "在校期间的主修课程、获得的<b>奖学金</b>或参与的社团活动等。"
+      description: "主修课程：软件工程、数据结构、算法分析、Web开发技术。\n荣誉奖项：连续三年获得校级一等奖学金。"
     }
   ],
   experience: [],
+  internships: [
+     {
+        id: "int1",
+        company: "某知名互联网公司",
+        position: "前端开发实习生",
+        startDate: "2023-07",
+        endDate: "2023-10",
+        description: "1. 负责公司内部管理系统的部分模块开发，使用 React + TypeScript 技术栈。\n2. 优化了首屏加载速度，提升了用户体验。\n3. 参与代码评审，遵循团队代码规范。"
+     }
+  ],
+  campus: [
+      {
+        id: "cam1",
+        company: "校学生会技术部",
+        position: "部长",
+        startDate: "2021-09",
+        endDate: "2022-06",
+        description: "组织并策划了校园“黑客马拉松”活动，吸引了超过200名学生参与。"
+      }
+  ],
   projects: [
     {
       id: "1",
-      name: "示例项目名称",
-      role: "负责人 / 开发者",
-      startDate: "2023-01",
-      endDate: "2023-06",
-      description: "项目描述：简要介绍项目背景和功能。\n我的职责：描述您具体负责的工作内容。\n成果：量化的项目成果或<c>技术突破</c>。"
+      name: "个人简历生成器",
+      role: "独立开发者",
+      startDate: "2023-12",
+      endDate: "2024-01",
+      description: "基于 React 19 和 TypeScript 开发的在线简历制作工具，支持实时预览和导出 Word 文档。"
     }
   ],
   skills: [],
-  customSections: [],
+  customSections: [
+      {
+          id: 'skills',
+          title: '技能特长',
+          items: [
+              { id: 's1', title: '编程语言', subtitle: '', date: '', description: 'JavaScript (ES6+), TypeScript, HTML5, CSS3, Python, Java' },
+              { id: 's2', title: '前端框架', subtitle: '', date: '', description: 'React, Vue.js, TailwindCSS, Next.js' }
+          ]
+      },
+      {
+          id: 'certs',
+          title: '荣誉证书',
+          items: [
+              { id: 'c1', title: '英语 CET-6', subtitle: '', date: '2022-06', description: '' },
+              { id: 'c2', title: '计算机技术与软件专业技术资格（中级）', subtitle: '', date: '2023-11', description: '' }
+          ]
+      },
+      {
+          id: 'self',
+          title: '自我评价',
+          items: [
+              { id: 'se1', title: '', subtitle: '', date: '', description: '热爱编程，具备良好的自学能力和团队协作精神。对待工作认真负责，能够承受一定的工作压力。' }
+          ]
+      }
+  ],
   sectionOrder: [
       { id: 'education', type: 'education', visible: true, name: '教育背景' },
       { id: 'experience', type: 'experience', visible: true, name: '工作经历' },
-      { id: 'projects', type: 'projects', visible: true, name: '项目经验' }
+      { id: 'internships', type: 'internships', visible: true, name: '实习经验' },
+      { id: 'projects', type: 'projects', visible: true, name: '项目经验' },
+      { id: 'campus', type: 'campus', visible: true, name: '校园经历' },
+      { id: 'skills', type: 'custom', visible: true, name: '技能特长' },
+      { id: 'certs', type: 'custom', visible: true, name: '荣誉证书' },
+      { id: 'self', type: 'custom', visible: true, name: '自我评价' }
   ]
 };
 
@@ -74,14 +135,93 @@ function App() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // Responsive Scale Listener
+  useEffect(() => {
+    const handleResize = () => {
+        const width = window.innerWidth;
+        if (width < 768) {
+            // Mobile: Fit width minus padding (approx)
+            // A4 width is ~210mm. Screen width pixels need to map to that.
+            // Let's assume standard A4 pixel width is around 794px at 96 DPI.
+            // We want the paper to fit in (window.innerWidth - 32px).
+            const containerWidth = width - 40; 
+            const paperOriginalWidth = 794; 
+            const newScale = Math.max(0.4, containerWidth / paperOriginalWidth);
+            setScale(newScale);
+        } else if (width < 1200) {
+            setScale(0.65);
+        } else {
+            setScale(0.85);
+        }
+    };
+
+    window.addEventListener('resize', handleResize);
+    handleResize(); // Initial call
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   const handleDownloadStandard = () => {
     generateDocx(resumeData);
     setShowDownloadMenu(false);
   };
 
-  const handleDownloadBlock = () => {
-      generateBlockDocx(resumeData);
-      setShowDownloadMenu(false);
+  const handleDownloadImageDocx = async () => {
+      const { html2canvas } = window;
+      if (!html2canvas) {
+          alert("导出组件加载中，请稍后再试。");
+          return;
+      }
+      
+      const originalElement = document.getElementById('resume-preview-content');
+      if (!originalElement) return;
+
+      // Clone logic to render full size off-screen
+      const container = document.createElement('div');
+      container.style.position = 'absolute';
+      container.style.top = '-9999px';
+      container.style.left = '-9999px';
+      container.style.width = '210mm';
+      container.style.zIndex = '-1';
+      document.body.appendChild(container);
+
+      const clone = originalElement.cloneNode(true) as HTMLElement;
+      clone.style.transform = 'none';
+      clone.style.margin = '0';
+      clone.style.boxShadow = 'none';
+      container.appendChild(clone);
+
+      try {
+          // Wait for images
+          const images = Array.from(clone.getElementsByTagName('img'));
+          await Promise.all(images.map(img => {
+              if (img.complete) return Promise.resolve();
+              return new Promise(resolve => { img.onload = resolve; img.onerror = resolve; });
+          }));
+
+          const canvas = await html2canvas(clone, { 
+              scale: 2, // High res for print
+              useCORS: true,
+              logging: false,
+              backgroundColor: '#ffffff',
+              windowWidth: 794,
+          });
+
+          // Convert canvas to blob
+          canvas.toBlob((blob: Blob | null) => {
+              if (blob) {
+                  generateImageBasedDocx(blob, resumeData.profile.name || 'resume');
+              } else {
+                  alert("导出生成失败");
+              }
+          }, 'image/png');
+
+      } catch (error) {
+          console.error("Export failed", error);
+          alert("导出失败，请重试");
+      } finally {
+          document.body.removeChild(container);
+          setShowDownloadMenu(false);
+      }
   };
 
   const captureExactPreview = async (type: 'image' | 'pdf') => {
@@ -108,6 +248,13 @@ function App() {
       container.appendChild(clone);
 
       try {
+          // Wait for images to load in clone if any (avatar)
+          const images = Array.from(clone.getElementsByTagName('img'));
+          await Promise.all(images.map(img => {
+              if (img.complete) return Promise.resolve();
+              return new Promise(resolve => { img.onload = resolve; img.onerror = resolve; });
+          }));
+
           const canvas = await html2canvas(clone, { 
               scale: 2,
               useCORS: true,
@@ -347,6 +494,20 @@ function App() {
                           className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
                       />
                   </div>
+
+                  {/* Page Padding */}
+                  <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                          <span className="text-sm font-medium text-slate-600">页面边距</span>
+                          <span className="text-xs bg-slate-100 px-2 py-0.5 rounded text-slate-600 font-mono">{resumeData.style.pagePadding || 20}mm</span>
+                      </div>
+                      <input 
+                          type="range" min="10" max="35" step="1"
+                          value={resumeData.style.pagePadding || 20}
+                          onChange={(e) => updateStyle('pagePadding', parseInt(e.target.value))}
+                          className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                      />
+                  </div>
               </div>
           </section>
       </div>
@@ -357,7 +518,7 @@ function App() {
       <input type="file" ref={fileInputRef} onChange={handleFileChange} accept=".docx" className="hidden" />
 
       {/* Modern Top Navigation Bar */}
-      <nav className="bg-white border-b border-slate-200 sticky top-0 z-20">
+      <nav className="bg-white border-b border-slate-200 sticky top-0 z-20 shrink-0">
         <div className="max-w-[1600px] mx-auto px-4 lg:px-6 h-16 flex items-center justify-between">
           
           {/* Logo Area */}
@@ -371,10 +532,10 @@ function App() {
           </div>
           
           {/* Actions Area */}
-          <div className="flex items-center gap-3">
-             {/* Zoom Controls */}
+          <div className="flex items-center gap-2 sm:gap-3">
+             {/* Zoom Controls (Hidden on tiny screens) */}
              <div className="hidden lg:flex items-center bg-slate-50 rounded-lg p-1 mr-4 border border-slate-200">
-                <button onClick={() => setScale(Math.max(0.5, scale - 0.1))} className="p-1 hover:bg-white hover:shadow-sm rounded text-slate-600 transition-all"><ChevronLeft size={14} /></button>
+                <button onClick={() => setScale(Math.max(0.4, scale - 0.1))} className="p-1 hover:bg-white hover:shadow-sm rounded text-slate-600 transition-all"><ChevronLeft size={14} /></button>
                 <span className="text-xs px-2 min-w-[3rem] text-center font-medium text-slate-600">{Math.round(scale * 100)}%</span>
                 <button onClick={() => setScale(Math.min(1.5, scale + 0.1))} className="p-1 hover:bg-white hover:shadow-sm rounded text-slate-600 transition-all"><ChevronRight size={14} /></button>
              </div>
@@ -382,19 +543,19 @@ function App() {
             <button 
                 onClick={handleImportClick} 
                 disabled={isImporting} 
-                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 focus:ring-4 focus:ring-slate-100 transition-all"
+                className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 focus:ring-4 focus:ring-slate-100 transition-all"
             >
                 <Upload size={16} /> 
-                <span className="hidden sm:inline">导入 Word</span>
+                <span className="hidden sm:inline">导入</span>
             </button>
 
-            <div className="h-6 w-px bg-slate-200 mx-2"></div>
+            <div className="hidden sm:block h-6 w-px bg-slate-200 mx-1"></div>
 
-            <div className="flex gap-2">
-                <button onClick={handleExportImage} className="group relative p-2 text-slate-500 hover:text-indigo-600 transition-colors" title="导出为图片">
+            <div className="flex gap-1 sm:gap-2">
+                <button onClick={handleExportImage} className="hidden sm:block group relative p-2 text-slate-500 hover:text-indigo-600 transition-colors" title="导出为图片">
                     <ImageIcon size={20} />
                 </button>
-                <button onClick={handleExportPDF} className="group relative p-2 text-slate-500 hover:text-red-600 transition-colors" title="导出为 PDF">
+                <button onClick={handleExportPDF} className="hidden sm:block group relative p-2 text-slate-500 hover:text-red-600 transition-colors" title="导出为 PDF">
                     <FileType size={20} />
                 </button>
                 
@@ -402,10 +563,10 @@ function App() {
                 <div className="relative" ref={downloadBtnRef}>
                     <button 
                         onClick={() => setShowDownloadMenu(!showDownloadMenu)} 
-                        className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-slate-900 rounded-lg hover:bg-slate-800 focus:ring-4 focus:ring-slate-200 transition-all shadow-sm"
+                        className="flex items-center gap-2 px-3 sm:px-4 py-2 text-sm font-medium text-white bg-slate-900 rounded-lg hover:bg-slate-800 focus:ring-4 focus:ring-slate-200 transition-all shadow-sm"
                     >
                         <Download size={16} /> 
-                        <span className="hidden sm:inline">下载 Word</span>
+                        <span className="hidden sm:inline">下载</span>
                         <ChevronDown size={14} className={`transition-transform ${showDownloadMenu ? 'rotate-180' : ''}`} />
                     </button>
 
@@ -418,7 +579,7 @@ function App() {
                                 >
                                     <div className="flex justify-between items-center mb-0.5">
                                         <span className="font-bold text-slate-800 group-hover:text-blue-700">标准文档</span>
-                                        <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded border border-blue-200">通用</span>
+                                        <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded border border-blue-200">文字可编辑</span>
                                     </div>
                                     <p className="text-xs text-slate-500 leading-relaxed">
                                         标准 Word 流式排版，适合大多数场景。
@@ -428,15 +589,15 @@ function App() {
                                 <div className="h-px bg-slate-100 mx-2"></div>
 
                                 <button 
-                                    onClick={handleDownloadBlock}
+                                    onClick={handleDownloadImageDocx}
                                     className="w-full text-left p-3 hover:bg-emerald-50 rounded-lg group transition-colors"
                                 >
                                      <div className="flex justify-between items-center mb-0.5">
-                                        <span className="font-bold text-slate-800 group-hover:text-emerald-700">精准排版 (推荐)</span>
-                                        <span className="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded border border-emerald-200">防错位</span>
+                                        <span className="font-bold text-slate-800 group-hover:text-emerald-700">图片版文档 (视觉完美)</span>
+                                        <span className="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded border border-emerald-200">绝对不跑版</span>
                                     </div>
                                     <p className="text-xs text-slate-500 leading-relaxed">
-                                        采用“文本框式”的全表格布局。排版严格锁定不跑版，且内容可编辑。
+                                        将简历生成为高清图片插入 Word。100% 还原网页排版，但文字不可编辑。
                                     </p>
                                 </button>
                              </div>
@@ -453,7 +614,7 @@ function App() {
       <main className="flex-1 overflow-hidden flex flex-col md:flex-row max-w-[1600px] mx-auto w-full">
         
         {/* Left: Editor Sidebar */}
-        <div className="w-full md:w-[420px] lg:w-[480px] bg-white border-r border-slate-200 flex flex-col z-10 shadow-[4px_0_24px_-12px_rgba(0,0,0,0.1)]">
+        <div className="w-full md:w-[420px] lg:w-[480px] bg-white border-r border-slate-200 flex flex-col z-10 shadow-[4px_0_24px_-12px_rgba(0,0,0,0.1)] h-1/2 md:h-full">
             {/* Sidebar Navigation */}
             <div className="flex border-b border-slate-100 p-2 gap-2 bg-white">
                 <button 
@@ -489,23 +650,23 @@ function App() {
         </div>
 
         {/* Right: Preview Area */}
-        <div className="flex-1 bg-[#F8FAFC] overflow-y-auto relative flex justify-center items-start pt-8 pb-20 px-4">
+        <div className="flex-1 bg-[#F8FAFC] overflow-y-auto relative flex justify-center items-start pt-8 pb-20 px-4 h-1/2 md:h-full border-t md:border-t-0 border-slate-200">
            {/* Preview Badge */}
            <div className="absolute top-4 pointer-events-none z-10 opacity-60 hover:opacity-100 transition-opacity">
              <span className="flex items-center gap-2 text-xs font-medium text-slate-500 bg-white px-3 py-1.5 rounded-full shadow-sm border border-slate-200">
                  {resumeData.style.templateId === 'classic' && <span className="w-2 h-2 rounded-full bg-blue-500"></span>}
                  {resumeData.style.templateId === 'modern' && <span className="w-2 h-2 rounded-full bg-emerald-500"></span>}
                  {resumeData.style.templateId === 'minimal' && <span className="w-2 h-2 rounded-full bg-slate-800"></span>}
-                 {resumeData.style.templateId === 'classic' && '经典模板'}
-                 {resumeData.style.templateId === 'modern' && '现代模板'}
-                 {resumeData.style.templateId === 'minimal' && '极简模板'}
+                 {resumeData.style.templateId === 'classic' && '经典'}
+                 {resumeData.style.templateId === 'modern' && '现代'}
+                 {resumeData.style.templateId === 'minimal' && '极简'}
                  <span className="text-slate-300">|</span>
                  所见即所得
              </span>
            </div>
            
            {/* The Paper */}
-           <div className="shadow-2xl rounded-sm transition-all duration-300 mt-6">
+           <div className="shadow-2xl rounded-sm transition-all duration-300 mt-6 mb-20">
                 <ResumePreview data={resumeData} scale={scale} />
            </div>
         </div>
