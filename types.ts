@@ -79,7 +79,7 @@ export interface SectionConfig {
 }
 
 // Styling Types
-export type TemplateId = 'classic' | 'modern' | 'minimal';
+export type TemplateId = 'classic' | 'modern' | 'minimal' | 'curve';
 export type FontFamily = 'Calibri' | 'Microsoft YaHei' | 'SimSun' | 'KaiTi' | 'Roboto';
 
 export interface ResumeStyle {
